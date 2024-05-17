@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Text Generation</title>
+  </head>
+  <body>
+    <h1>Text Generation</h1>
+    <form id="generateForm">
+      <label for="textPrompt">Enter your prompt:</label><br />
+      <textarea id="textPrompt" name="textPrompt" rows="4" cols="50"></textarea
+      ><br /><br />
+      <input type="submit" value="Generate" />
+    </form>
+    <h2>Generated Text:</h2>
+    <pre id="generatedText"></pre>
+
+    <script>
+      document
+        .getElementById("generateForm")
+        .addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const textPrompt = document.getElementById("textPrompt").value;
+
+          const response = await fetch("/generate-text", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ textPrompt }),
+          });
+
+          const result = await response.json();
+          document.getElementById("generatedText").innerText = JSON.stringify(
+            result,
+            null,
+            2
+          );
+        });
+    </script>
+  </body>
+</html>
