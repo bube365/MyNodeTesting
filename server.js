@@ -63,6 +63,36 @@ async function sendMessage(message) {
   return response;
 }
 
+async function generateContent(audioData, textPrompt) {
+  const req = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          audioData,
+          {
+            text: `Generate transcription from the audio, only extract speech and ignore background audio.`,
+          },
+        ],
+      },
+    ],
+  };
+  const streamingResp = await generativeModel.generateContentStream(req);
+
+  // console.log(streamingResp);
+
+  for await (const item of streamingResp.stream) {
+    process.stdout.write("stream chunk: " + JSON.stringify(item) + "\n");
+  }
+
+  const response = await streamingResp.response;
+
+  return response;
+  // return process.stdout.write(
+  //   "aggregated response: " + JSON.stringify(await streamingResp.response)
+  // );
+}
+
 app.post(
   "/generate-multimodal",
   upload.single("document"),
@@ -80,7 +110,19 @@ app.post(
       documentData = req.file.buffer.toString("base64");
     }
 
+    let audioData;
+    // audioData =
+    //   "gs://cloud-samples-data/generative-ai/audio/audio_transcription_data_commons.mp3";
+    audioData = req.body.audioData;
     // console.log("req.file", req.file);
+
+    // if (req.body.audioData) {
+    //   const audioResponse = await req.body.audioData;
+    //   const audioBlob = await audioResponse.blob();
+    //   const audioArrayBuffer = await audioBlob.arrayBuffer();
+
+    //   audioData = Buffer.from(audioArrayBuffer).toString("base64");
+    // }
 
     try {
       const content = documentData
@@ -88,14 +130,23 @@ app.post(
             { inlineData: { mimeType: "application/pdf", data: documentData } },
             { text: textPrompt },
           ]
+        : audioData
+        ? {
+            fileData: {
+              mimeType: "audio/mpeg",
+              fileUri: audioData,
+            },
+          }
         : { text: textPrompt };
 
-      // console.log("Content to be sent:", content);
+      console.log("Content to be sent:", content);
 
       let initialResponse;
 
       if (req.file) {
         initialResponse = await sendMessage(content);
+      } else if (req.body.audioData) {
+        initialResponse = await generateContent(audioData, textPrompt);
       } else {
         initialResponse = await sendMessage([content.text]);
       }
@@ -108,6 +159,8 @@ app.post(
     }
   }
 );
+
+//
 
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
