@@ -39,8 +39,6 @@ const generativeModel = vertexAI.preview.getGenerativeModel({
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-// console.log(upload);
-
 const app = express();
 const port = process.env.PORT || 5001;
 
@@ -69,28 +67,39 @@ async function generateContent(audioData, textPrompt) {
       {
         role: "user",
         parts: [
-          audioData,
           {
-            text: `Generate transcription from the audio, only extract speech and ignore background audio.`,
+            inlineData: {
+              mimeType: "audio/mpeg",
+              data: audioData,
+            },
+          },
+          {
+            text:
+              // textPrompt ||
+              "Generate transcription from the audio, only extract speech and ignore background audio.",
           },
         ],
       },
     ],
   };
-  const streamingResp = await generativeModel.generateContentStream(req);
 
-  // console.log(streamingResp);
+  const streamingResp = await generativeModel.generateContentStream(req);
 
   for await (const item of streamingResp.stream) {
     process.stdout.write("stream chunk: " + JSON.stringify(item) + "\n");
   }
 
-  const response = await streamingResp.response;
+  const Initresponse = await streamingResp.response;
 
+  // console.log("audiTransc", Initresponse);
+
+  const chat = generativeModel.startChat({});
+  const streamResult = await chat.sendMessageStream([
+    Initresponse.candidates[0].content.parts[0].text,
+  ]);
+
+  const response = await streamResult.response;
   return response;
-  // return process.stdout.write(
-  //   "aggregated response: " + JSON.stringify(await streamingResp.response)
-  // );
 }
 
 app.post(
@@ -111,18 +120,10 @@ app.post(
     }
 
     let audioData;
-    // audioData =
-    //   "gs://cloud-samples-data/generative-ai/audio/audio_transcription_data_commons.mp3";
-    audioData = req.body.audioData;
-    // console.log("req.file", req.file);
 
-    // if (req.body.audioData) {
-    //   const audioResponse = await req.body.audioData;
-    //   const audioBlob = await audioResponse.blob();
-    //   const audioArrayBuffer = await audioBlob.arrayBuffer();
-
-    //   audioData = Buffer.from(audioArrayBuffer).toString("base64");
-    // }
+    if (req.body.audioData) {
+      audioData = req.body.audioData;
+    }
 
     try {
       const content = documentData

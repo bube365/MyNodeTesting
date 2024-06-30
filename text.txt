@@ -3,13 +3,13 @@ const cors = require("cors");
 const { VertexAI } = require("@google-cloud/vertexai");
 const path = require("path");
 const multer = require("multer");
-const { log } = require("console");
 
 const projectId = "gemini-ai-423208"; // Replace with your project ID
 const location = "us-central1";
 const modelName = "gemini-1.5-flash-001"; // Replace with your model name
 
 const vertexAI = new VertexAI({ project: projectId, location });
+
 const generativeModel = vertexAI.preview.getGenerativeModel({
   model: modelName,
   generationConfig: {
@@ -39,7 +39,7 @@ const generativeModel = vertexAI.preview.getGenerativeModel({
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-console.log(upload);
+// console.log(upload);
 
 const app = express();
 const port = process.env.PORT || 5001;
@@ -47,31 +47,53 @@ const port = process.env.PORT || 5001;
 app.use(express.json());
 app.use(cors({ origin: "http://localhost:3000" })); // Adjust origin if needed
 
-// Serve index.html (optional, replace with your serving logic)
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-async function sendMessage(content) {
-  if (!content) {
+async function sendMessage(message) {
+  if (!message) {
     throw new Error("Missing content for chat message"); // Improved error handling
   }
 
   const chat = generativeModel.startChat({});
-  const streamResult = await chat.sendMessageStream(content);
+  const streamResult = await chat.sendMessageStream(message);
+
   const response = await streamResult.response;
   return response;
-  // ... existing logic to handle response (check for candidates)
 }
 
-// async function sendMessage(message) {
-//   const streamResult = await chat.sendMessageStream(message);
-//   process.stdout.write(
-//     "stream result: " +
-//       JSON.stringify((await streamResult.response).candidates[0].content) +
-//       "\n"
-//   );
-// }
+async function generateContent(audioData, textPrompt) {
+  const req = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            fileData: {
+              mimeType: "audio/mpeg",
+              fileUri: audioData,
+            },
+          },
+          {
+            text:
+              // textPrompt ||
+              "Generate transcription from the audio, only extract speech and ignore background audio.",
+          },
+        ],
+      },
+    ],
+  };
+  const streamingResp = await generativeModel.generateContentStream(req);
+
+  for await (const item of streamingResp.stream) {
+    process.stdout.write("stream chunk: " + JSON.stringify(item) + "\n");
+  }
+
+  const response = await streamingResp.response;
+
+  return response;
+}
 
 app.post(
   "/generate-multimodal",
@@ -90,7 +112,16 @@ app.post(
       documentData = req.file.buffer.toString("base64");
     }
 
-    console.log("req.file", req.file);
+    let audioData;
+    // audioData =
+    //   "gs://cloud-samples-data/generative-ai/audio/audio_transcription_data_commons.mp3";
+    // audioData = req.body.audioData;
+    // console.log("req.file", req.file);
+
+    if (req.body.audioData) {
+      audioData = req.body.audioData;
+      console.log(audioData);
+    }
 
     try {
       const content = documentData
@@ -98,22 +129,37 @@ app.post(
             { inlineData: { mimeType: "application/pdf", data: documentData } },
             { text: textPrompt },
           ]
-        : { text: textPrompt }; // Create content object based on document availability
+        : audioData
+        ? {
+            fileData: {
+              mimeType: "audio/mpeg",
+              fileUri: audioData,
+            },
+          }
+        : { text: textPrompt };
 
       console.log("Content to be sent:", content);
 
-      const initialResponse = await sendMessage([content.text]);
+      let initialResponse;
+
+      if (req.file) {
+        initialResponse = await sendMessage(content);
+      } else if (req.body.audioData) {
+        initialResponse = await generateContent(audioData, textPrompt);
+      } else {
+        initialResponse = await sendMessage([content.text]);
+      }
 
       res.json(initialResponse);
       return initialResponse;
-
-      // ... process response
     } catch (error) {
       console.error("Error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
 );
+
+//
 
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
