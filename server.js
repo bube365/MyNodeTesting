@@ -4,7 +4,7 @@ const { VertexAI } = require("@google-cloud/vertexai");
 const path = require("path");
 const multer = require("multer");
 
-const projectId = "gemini-ai-423208"; // Replace with your project ID
+const projectId = "vestiaienv"; // Replace with your project ID
 const location = "us-central1";
 const modelName = "gemini-1.5-flash-001"; // Replace with your model name
 
